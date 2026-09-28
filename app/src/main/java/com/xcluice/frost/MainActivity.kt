@@ -124,14 +124,18 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun Blobs(night: Boolean) {
     val t = rememberInfiniteTransition(label = "b")
-    val a by t.animateFloat(0f, 1f, infiniteRepeatable(tween(9000, easing = LinearEasing), RepeatMode.Reverse), label = "a")
+    val a by t.animateFloat(0f, 1f, infiniteRepeatable(tween(12000, easing = LinearEasing), RepeatMode.Reverse), label = "a")
     val c1 = if (night) Color(0xFF6366F1) else Color.White
     val c2 = if (night) Color(0xFF22D3EE) else Color(0xFF9EE7FF)
     val c3 = if (night) Color(0xFFC084FC) else Color(0xFFB39DFF)
-    Box(Modifier.fillMaxSize()) {
-        Box(Modifier.offset((-60 + 140 * a).dp, (60 + 80 * a).dp).size(280.dp).blur(80.dp).background(c1.copy(.5f), CircleShape))
-        Box(Modifier.align(Alignment.CenterEnd).offset((40 - 120 * a).dp, (100 - 60 * a).dp).size(240.dp).blur(80.dp).background(c2.copy(.5f), CircleShape))
-        Box(Modifier.align(Alignment.BottomStart).offset((30 + 90 * a).dp, (-40 * a).dp).size(300.dp).blur(90.dp).background(c3.copy(.45f), CircleShape))
+    Canvas(Modifier.fillMaxSize()) {
+        fun glow(c: Color, cx: Float, cy: Float, r: Float) {
+            val o = Offset(cx, cy)
+            drawCircle(Brush.radialGradient(listOf(c, Color.Transparent), o, r), r, o)
+        }
+        glow(c1.copy(.40f), size.width * (.15f + .5f * a), size.height * (.10f + .10f * a), 320.dp.toPx())
+        glow(c2.copy(.35f), size.width * (.85f - .5f * a), size.height * (.45f - .08f * a), 300.dp.toPx())
+        glow(c3.copy(.35f), size.width * (.2f + .4f * a), size.height * (.85f - .1f * a), 340.dp.toPx())
     }
 }
 
@@ -162,15 +166,22 @@ fun Scene(code: Int, day: Int) {
                 drawCircle(Color(0xFFFFF1A8), 30.dp.toPx(), c)
             }
         }
-        if (code >= 2) Canvas(Modifier.fillMaxSize().blur(26.dp)) {
-            val col = if (night) Color(0xFF94A3B8).copy(.16f) else if (code >= 51) Color(0xFF334155).copy(.35f) else Color.White.copy(.32f)
+        if (code >= 2) Canvas(Modifier.fillMaxSize()) {
+            val col = if (night) Color(0xFF94A3B8).copy(.20f) else if (code >= 51) Color(0xFF334155).copy(.40f) else Color.White.copy(.38f)
             for (j in 0 until 5) {
-                val x = ((slow * 3f + j * .2f) % 1f) * (size.width + 500f) - 250f
-                drawOval(col, Offset(x, size.height * (.05f + .07f * j)), Size(460f, 150f))
+                val x = ((slow * 3f + j * .2f) % 1f) * (size.width + 600f) - 300f
+                val y = size.height * (.06f + .07f * j)
+                for (k in 0 until 3) {
+                    val c = Offset(x + k * 150f, y + (k % 2) * 40f); val r = 190f
+                    drawCircle(Brush.radialGradient(listOf(col, Color.Transparent), c, r), r, c)
+                }
             }
         }
-        if (code == 45 || code == 48) Canvas(Modifier.fillMaxSize().blur(30.dp)) {
-            for (j in 0 until 4) drawRect(Color.White.copy(.16f), Offset(0f, size.height * (.15f + j * .2f) + 30f * sin(2f * PI.toFloat() * (t + j * .25f))), Size(size.width, 90.dp.toPx()))
+        if (code == 45 || code == 48) Canvas(Modifier.fillMaxSize()) {
+            for (j in 0 until 4) {
+                val y = size.height * (.15f + j * .2f) + 30f * sin(2f * PI.toFloat() * (t + j * .25f))
+                drawRect(Brush.verticalGradient(listOf(Color.Transparent, Color.White.copy(.2f), Color.Transparent), startY = y, endY = y + 140.dp.toPx()), Offset(0f, y), Size(size.width, 140.dp.toPx()))
+            }
         }
         if (rain || snow) Canvas(Modifier.fillMaxSize()) {
             val n = if (rain) 80 else 60
@@ -260,6 +271,17 @@ fun Hourly(w: Wx) = Glass("Next 24 hours · drag the curve") {
     }
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         listOf(0, 6, 12, 18, 23).forEach { i -> if (i < n) W(if (i == 0) "Now" else hour12(hs[i].time), 11, a = .7f) }
+    }
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        itemsIndexed(hs) { i, x ->
+            val base = if (i == sel) Modifier.glass(20) else Modifier
+            Column(base.padding(horizontal = 12.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                W(if (i == 0) "NOW" else hour12(x.time), 13, if (i == 0) FontWeight.Bold else FontWeight.Normal, .9f)
+                W(desc(x.code, x.isDay).first, 24)
+                W("${x.temp.roundToInt()}°", 18, FontWeight.SemiBold)
+                W("💧${x.pop}%", 12, a = .8f)
+            }
+        }
     }
 }
 
