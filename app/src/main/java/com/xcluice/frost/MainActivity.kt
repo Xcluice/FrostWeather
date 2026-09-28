@@ -35,6 +35,12 @@ import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.input.pointer.pointerInput
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.HazeTint
+import dev.chrisbanes.haze.hazeEffect
+import dev.chrisbanes.haze.hazeSource
+import kotlin.math.abs as fabs
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -60,10 +66,17 @@ import kotlin.math.sin
 fun Modifier.tap(f: () -> Unit): Modifier =
     clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = f)
 
-fun Modifier.glass(r: Int = 26): Modifier = this
-    .clip(RoundedCornerShape(r.dp))
-    .background(Brush.linearGradient(listOf(Color.White.copy(.26f), Color.White.copy(.07f))))
-    .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(.7f), Color.White.copy(.05f), Color.White.copy(.25f))), RoundedCornerShape(r.dp))
+val LocalHaze = staticCompositionLocalOf<HazeState?> { null }
+
+@Composable
+fun Modifier.glass(r: Int = 26): Modifier {
+    val hz = LocalHaze.current
+    val shape = RoundedCornerShape(r.dp)
+    var m = this.clip(shape)
+    if (hz != null) m = m.hazeEffect(hz) { blurRadius = 24.dp; noiseFactor = 0.04f; tints = listOf(HazeTint(Color.White.copy(.10f))) }
+    return m.background(Brush.linearGradient(listOf(Color.White.copy(.22f), Color.White.copy(.05f))))
+        .border(1.dp, Brush.linearGradient(listOf(Color.White.copy(.7f), Color.White.copy(.05f), Color.White.copy(.25f))), shape)
+}
 
 @Composable
 fun W(s: String, sz: Int = 14, w: FontWeight = FontWeight.Normal, a: Float = 1f, c: Color = Color.White) =
@@ -122,6 +135,61 @@ fun Blobs(night: Boolean) {
     }
 }
 
+// ---------- live weather scene ----------
+@Composable
+fun Scene(code: Int, day: Int) {
+    val tr = rememberInfiniteTransition(label = "s")
+    val t by tr.animateFloat(0f, 1f, infiniteRepeatable(tween(8000, easing = LinearEasing)), label = "t")
+    val slow by tr.animateFloat(0f, 1f, infiniteRepeatable(tween(90000, easing = LinearEasing)), label = "slow")
+    val rain = code in 51..67 || code in 80..82 || code >= 95
+    val snow = code in 71..77 || code == 85 || code == 86
+    val night = day != 1
+    Box(Modifier.fillMaxSize()) {
+        if (code <= 2) Canvas(Modifier.fillMaxSize()) {
+            val w = size.width; val h = size.height
+            if (night) {
+                for (i in 0 until 45) {
+                    val al = .25f + .75f * fabs(sin(2f * PI.toFloat() * (t * (2 + i % 3) + i * .13f)))
+                    drawCircle(Color.White.copy(al), (0.8f + (i % 3) * .5f).dp.toPx(), Offset(((i * 73) % 100) / 100f * w, ((i * 41) % 55) / 100f * h))
+                }
+                val c = Offset(w * .78f, h * .13f)
+                drawCircle(Color(0x33BFDBFE), 60.dp.toPx(), c)
+                drawCircle(Color(0xFFEFF6FF), 24.dp.toPx(), c)
+                drawCircle(Color(0x22334155), 20.dp.toPx(), Offset(c.x + 10.dp.toPx(), c.y - 4.dp.toPx()))
+            } else {
+                val c = Offset(w * .8f, h * .12f)
+                drawCircle(Brush.radialGradient(listOf(Color(0xE6FFF3B0), Color(0x00FFD54F)), c, 190.dp.toPx()), 190.dp.toPx(), c)
+                drawCircle(Color(0xFFFFF1A8), 30.dp.toPx(), c)
+            }
+        }
+        if (code >= 2) Canvas(Modifier.fillMaxSize().blur(26.dp)) {
+            val col = if (night) Color(0xFF94A3B8).copy(.16f) else if (code >= 51) Color(0xFF334155).copy(.35f) else Color.White.copy(.32f)
+            for (j in 0 until 5) {
+                val x = ((slow * 3f + j * .2f) % 1f) * (size.width + 500f) - 250f
+                drawOval(col, Offset(x, size.height * (.05f + .07f * j)), Size(460f, 150f))
+            }
+        }
+        if (code == 45 || code == 48) Canvas(Modifier.fillMaxSize().blur(30.dp)) {
+            for (j in 0 until 4) drawRect(Color.White.copy(.16f), Offset(0f, size.height * (.15f + j * .2f) + 30f * sin(2f * PI.toFloat() * (t + j * .25f))), Size(size.width, 90.dp.toPx()))
+        }
+        if (rain || snow) Canvas(Modifier.fillMaxSize()) {
+            val n = if (rain) 80 else 60
+            for (i in 0 until n) {
+                val k = if (rain) 3 + i % 3 else 1 + i % 2
+                val y = ((t * k + (i * 0.618034f) % 1f) % 1f) * (size.height + 60f) - 30f
+                val x0 = ((i * 37) % 100) / 100f * size.width
+                if (rain) drawLine(Color.White.copy(.5f), Offset(x0, y), Offset(x0 - 6.dp.toPx(), y + 22.dp.toPx()), 1.5f.dp.toPx())
+                else drawCircle(Color.White.copy(.85f), (1.5f + (i % 3)).dp.toPx(), Offset(x0 + sin(2f * PI.toFloat() * (t * 2 + i * .1f)) * 14.dp.toPx(), y))
+            }
+        }
+        if (code >= 95) Canvas(Modifier.fillMaxSize()) {
+            val ph = (t * 2f) % 1f
+            val al = if (ph < .02f) .5f else if (ph in .06f..0.08f) .3f else 0f
+            if (al > 0f) drawRect(Color.White.copy(al))
+        }
+    }
+}
+
 // ---------- sections ----------
 @Composable
 fun Hero(w: Wx) {
@@ -155,17 +223,43 @@ fun Atmos(w: Wx) = Glass("Atmosphere") {
 }
 
 @Composable
-fun Hourly(w: Wx) = Glass("Next 24 hours") {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        itemsIndexed(w.hours) { i, h ->
-            val base = if (i == 0) Modifier.glass(20) else Modifier
-            Column(base.padding(horizontal = 12.dp, vertical = 10.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                W(if (i == 0) "NOW" else hour12(h.time), 13, if (i == 0) FontWeight.Bold else FontWeight.Normal, .9f)
-                W(desc(h.code, h.isDay).first, 24)
-                W("${h.temp.roundToInt()}°", 18, FontWeight.SemiBold)
-                W("💧${h.pop}%", 12, a = .8f)
+fun Hourly(w: Wx) = Glass("Next 24 hours · drag the curve") {
+    val hs = w.hours; val n = hs.size
+    var sel by remember { mutableStateOf(0) }
+    val h = hs[sel.coerceIn(0, n - 1)]
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        W(desc(h.code, h.isDay).first, 22); Spacer(Modifier.width(8.dp))
+        W("${if (sel == 0) "Now" else hour12(h.time)}  ·  ${h.temp.roundToInt()}°  ·  💧${h.pop}%", 15, FontWeight.SemiBold)
+    }
+    val lo = hs.minOf { it.temp }; val hi = hs.maxOf { it.temp }; val range = (hi - lo).coerceAtLeast(1.0)
+    Canvas(Modifier.fillMaxWidth().height(150.dp).pointerInput(n) {
+        awaitPointerEventScope {
+            while (true) {
+                val p = awaitPointerEvent().changes.firstOrNull()
+                if (p != null && p.pressed) sel = ((p.position.x / size.width) * (n - 1)).roundToInt().coerceIn(0, n - 1)
             }
         }
+    }) {
+        val padX = 10.dp.toPx(); val top = 14.dp.toPx(); val bot = 30.dp.toPx()
+        val cw = size.width - 2 * padX; val ch = size.height - top - bot
+        val xs = FloatArray(n) { padX + it * cw / (n - 1) }
+        val ys = FloatArray(n) { top + (1f - ((hs[it].temp - lo) / range).toFloat()) * ch }
+        for (i in 0 until n) {
+            val bh = hs[i].pop / 100f * 24.dp.toPx()
+            drawRoundRect(Color(0xFF7DD3FC).copy(.45f), Offset(xs[i] - 3.dp.toPx(), size.height - bh), Size(6.dp.toPx(), bh), CornerRadius(3.dp.toPx()))
+        }
+        fun Path.curve() { moveTo(xs[0], ys[0]); for (i in 1 until n) { val cx = (xs[i - 1] + xs[i]) / 2f; cubicTo(cx, ys[i - 1], cx, ys[i], xs[i], ys[i]) } }
+        val line = Path().apply { curve() }
+        val fill = Path().apply { curve(); lineTo(xs[n - 1], size.height - bot); lineTo(xs[0], size.height - bot); close() }
+        drawPath(fill, Brush.verticalGradient(listOf(Color.White.copy(.35f), Color.Transparent), startY = top, endY = size.height - bot))
+        drawPath(line, Color.White, style = Stroke(3.dp.toPx(), cap = StrokeCap.Round))
+        val si = sel.coerceIn(0, n - 1)
+        drawLine(Color.White.copy(.5f), Offset(xs[si], top), Offset(xs[si], size.height - bot), 1.dp.toPx())
+        drawCircle(Color.White, 6.dp.toPx(), Offset(xs[si], ys[si]))
+        drawCircle(Color(0xFF38BDF8), 3.dp.toPx(), Offset(xs[si], ys[si]))
+    }
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        listOf(0, 6, 12, 18, 23).forEach { i -> if (i < n) W(if (i == 0) "Now" else hour12(hs[i].time), 11, a = .7f) }
     }
 }
 
@@ -427,12 +521,18 @@ fun App() {
         val (p, cached, s) = ctx.readAll()
         saved = s; if (cached != null) wx = cached
         refresh(p ?: home)
+        if (p == null) { msg = "Choose your city or use your location for accurate weather"; showSearch = true }
     }
     BackHandler(showSearch) { showSearch = false }
 
     val w = wx
-    Box(Modifier.fillMaxSize().background(Brush.verticalGradient(sky(w?.cur?.code ?: 3, w?.cur?.isDay ?: 1)))) {
-        Blobs(w?.cur?.isDay == 0)
+    val hz = remember { HazeState() }
+    CompositionLocalProvider(LocalHaze provides hz) {
+    Box(Modifier.fillMaxSize()) {
+        Box(Modifier.fillMaxSize().hazeSource(hz).background(Brush.verticalGradient(sky(w?.cur?.code ?: 3, w?.cur?.isDay ?: 1)))) {
+            Blobs(w?.cur?.isDay == 0)
+            Scene(w?.cur?.code ?: 3, w?.cur?.isDay ?: 1)
+        }
         PullToRefreshBox(isRefreshing = refreshing, onRefresh = { refresh(w?.place ?: home) }, modifier = Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -461,6 +561,7 @@ fun App() {
                             W(humLabel(w.cur.hum), 13, a = .8f)
                         }
                     }
+                    W("Open-Meteo model data · updated ${w.now.takeLast(5)} local time · can differ slightly from station-based apps", 11, a = .6f)
                 }
                 Spacer(Modifier.navigationBarsPadding().height(24.dp))
             }
@@ -470,5 +571,6 @@ fun App() {
                 { p -> val ns = saved.filter { it !== p }; saved = ns; scope.launch { ctx.saveList(ns) } },
                 { useGps() }, { showSearch = false })
         }
+    }
     }
 }
