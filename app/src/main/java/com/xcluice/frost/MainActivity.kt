@@ -389,7 +389,7 @@ fun App() {
             refreshing = true; err = null
             try {
                 val (raw, aqi) = withContext(Dispatchers.IO) { fetchRaw(p) to fetchAqi(p) }
-                wx = parse(p, raw, aqi); offline = false
+                val nw = parse(p, raw, aqi); wx = nw; offline = false; WeatherWidget.push(ctx, nw)
                 ctx.saveWx(p, raw, aqi)
             } catch (e: Exception) {
                 if (wx == null) err = "${e.javaClass.simpleName}: ${e.message}" else offline = true
