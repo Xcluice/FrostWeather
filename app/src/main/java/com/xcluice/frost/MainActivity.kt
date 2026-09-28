@@ -36,6 +36,8 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import dev.chrisbanes.haze.HazeState
 import dev.chrisbanes.haze.HazeTint
 import dev.chrisbanes.haze.hazeEffect
@@ -206,15 +208,66 @@ fun Scene(code: Int, day: Int) {
 fun Hero(w: Wx) {
     val (emo, txt) = desc(w.cur.code, w.cur.isDay)
     val d = w.days[0]
-    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-        W(w.place.name, 30, FontWeight.SemiBold)
-        if (w.place.sub.isNotBlank()) W(w.place.sub, 13, a = .7f)
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            W(emo, 60); Spacer(Modifier.width(10.dp)); W("${w.cur.temp.roundToInt()}°", 104, FontWeight.Thin)
+    val (al, _) = aqiInfo(w.aqi)
+    Column(Modifier.fillMaxWidth().padding(top = 36.dp, bottom = 36.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        W("${w.cur.temp.roundToInt()}°", 132, FontWeight.Thin)
+        Spacer(Modifier.height(6.dp))
+        Text("$emo $txt   ${d.min.roundToInt()}° / ${d.max.roundToInt()}°   Air quality: ${w.aqi} – $al",
+            color = Color.White, fontSize = 16.sp, fontWeight = FontWeight.Medium, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+fun AqiSummary(w: Wx) {
+    val (label, col) = aqiInfo(w.aqi)
+    val info = when {
+        w.aqi <= 50 -> "Air quality is satisfactory, and air pollution poses little or no risk."
+        w.aqi <= 100 -> "Air quality is acceptable; however, some pollutants may be a concern for unusually sensitive people."
+        w.aqi <= 150 -> "Sensitive groups may experience health effects. Limit prolonged outdoor exertion."
+        else -> "Everyone may experience health effects. Avoid outdoor activity."
+    }
+    Row(Modifier.fillMaxWidth().glass().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            W("🍃  $label", 20, FontWeight.SemiBold)
+            Text(info, color = Color.White.copy(.85f), fontSize = 13.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
-        W(txt, 20, FontWeight.Medium)
-        Spacer(Modifier.height(4.dp))
-        W("Feels like ${w.cur.feels.roundToInt()}°   ↑${d.max.roundToInt()}°  ↓${d.min.roundToInt()}°", 15, a = .85f)
+        Spacer(Modifier.width(12.dp))
+        Box(Modifier.size(80.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize()) {
+                val sw = 7.dp.toPx(); val ins = sw / 2
+                val sz = Size(size.width - sw, size.height - sw)
+                drawArc(Color.White.copy(.2f), 0f, 360f, false, Offset(ins, ins), sz, style = Stroke(sw))
+                drawArc(col, -90f, (w.aqi / 300f).coerceIn(0f, 1f) * 360f, false, Offset(ins, ins), sz, style = Stroke(sw, cap = StrokeCap.Round))
+            }
+            W("${w.aqi}", 22, FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+fun Tile(icon: String, label: String, value: String, unit: String, m: Modifier) =
+    Column(m.glass(22).padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        W(icon, 20); W(label, 13, a = .7f)
+        Row(verticalAlignment = Alignment.Bottom) {
+            W(value, 24, FontWeight.SemiBold)
+            if (unit.isNotEmpty()) { Spacer(Modifier.width(3.dp)); Box(Modifier.padding(bottom = 3.dp)) { W(unit, 12, a = .8f) } }
+        }
+    }
+
+@Composable
+fun Tiles(w: Wx) {
+    val c = w.cur
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Tile("☀️", "UV", "${c.uv.roundToInt()}", uvLevel(c.uv), Modifier.weight(1f))
+            Tile("🌡️", "Feels like", "${c.feels.roundToInt()}", "°", Modifier.weight(1f))
+            Tile("💧", "Humidity", "${c.hum}", "%", Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Tile("💨", "${compass16(c.dir)} wind", "${c.wind.roundToInt()}", "km/h", Modifier.weight(1f))
+            Tile("🧭", "Air pressure", "${c.press}", "hPa", Modifier.weight(1f))
+            Tile("👁️", "Visibility", "${c.vis.roundToInt()}", "km", Modifier.weight(1f))
+        }
     }
 }
 
@@ -430,7 +483,7 @@ fun SearchOverlay(saved: List<Place>, current: Place?, msg: String?, onPick: (Pl
         res = try { withContext(Dispatchers.IO) { search(s) } } catch (e: Exception) { emptyList() }
         busy = false
     }
-    val caps = listOf(Place("New York", 40.7128, -74.006, "United States"), Place("London", 51.5074, -0.1278, "United Kingdom"),
+    val caps = listOf(Place("Srinagar", 34.0837, 74.7973, "Jammu & Kashmir, India"), Place("New York", 40.7128, -74.006, "United States"), Place("London", 51.5074, -0.1278, "United Kingdom"),
         Place("Tokyo", 35.6762, 139.6503, "Japan"), Place("Paris", 48.8566, 2.3522, "France"), Place("New Delhi", 28.6139, 77.209, "India"))
     Box(Modifier.fillMaxSize().background(Color.Black.copy(.6f)).tap { onClose() }) {
         val shape = RoundedCornerShape(28.dp)
@@ -498,7 +551,7 @@ fun App() {
     var showSearch by remember { mutableStateOf(false) }
     var msg by remember { mutableStateOf<String?>(null) }
     val fused = remember { LocationServices.getFusedLocationProviderClient(ctx) }
-    val home = Place("Berlin", 52.52, 13.41, "Germany")
+    val home = Place("Srinagar", 34.0837, 74.7973, "Jammu & Kashmir, India")
 
     fun refresh(p: Place) {
         scope.launch {
@@ -559,7 +612,10 @@ fun App() {
             Column(Modifier.fillMaxSize().statusBarsPadding().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Row(Modifier.fillMaxWidth().padding(top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.weight(1f)) { W("❄  Frost", 20, FontWeight.Bold) }
+                    Box(Modifier.weight(1f)) { Column {
+                            W(w?.place?.name ?: "Frost", 26, FontWeight.Bold)
+                            if (w != null && w.place.sub.isNotBlank()) W("📍 ${w.place.sub}", 12, a = .75f)
+                        } }
                     if (offline) { W("offline", 12, a = .8f); Spacer(Modifier.width(10.dp)) }
                     Box(Modifier.size(42.dp).glass(21).tap { showSearch = true }, contentAlignment = Alignment.Center) { W("+", 24) }
                 }
@@ -571,7 +627,7 @@ fun App() {
                 }
                 if (w == null && err == null) W("Loading…", 16, a = .8f)
                 if (w != null) {
-                    Hero(w); Atmos(w); Hourly(w); Daily(w); SunCard(w); UvCard(w); WindCard(w); AqiCard(w)
+                    Hero(w); AqiSummary(w); Hourly(w); Daily(w); AqiCard(w); Tiles(w); SunCard(w); UvCard(w); WindCard(w)
                     val d = w.days[0]
                     Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                         Glass("Precipitation", Modifier.weight(1f)) {

@@ -18,7 +18,7 @@ class WeatherWidget : AppWidgetProvider() {
             try {
                 val (place, cached, _) = runBlocking { context.readAll() }
                 if (cached != null) ids.forEach { mgr.updateAppWidget(it, build(context, cached)) }
-                val p = place ?: Place("Berlin", 52.52, 13.41, "Germany")
+                val p = place ?: Place("Srinagar", 34.0837, 74.7973, "Jammu & Kashmir, India")
                 try {
                     val raw = fetchRaw(p); val aqi = fetchAqi(p)
                     val fresh = parse(p, raw, aqi)
