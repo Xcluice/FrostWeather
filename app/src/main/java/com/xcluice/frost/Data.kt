@@ -8,7 +8,9 @@ import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
-import java.net.HttpURLConnection
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.util.concurrent.TimeUnit
 import java.net.URL
 import java.net.URLEncoder
 import java.time.LocalDate
@@ -33,14 +35,16 @@ data class Wx(val place: Place, val cur: Cur, val hours: List<Hour>, val days: L
 fun Place.json(): JSONObject = JSONObject().put("n", name).put("a", lat).put("o", lon).put("s", sub)
 fun JSONObject.place() = Place(getString("n"), getDouble("a"), getDouble("o"), optString("s"))
 
-fun get(url: String): String {
-    val c = URL(url).openConnection() as HttpURLConnection
-    c.connectTimeout = 15000; c.readTimeout = 20000
-    c.setRequestProperty("User-Agent", "FrostWeather/2.0")
-    try {
-        if (c.responseCode !in 200..299) error("HTTP ${c.responseCode}")
-        return c.inputStream.bufferedReader().readText()
-    } finally { c.disconnect() }
+private val http = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS)
+    .callTimeout(20, TimeUnit.SECONDS).retryOnConnectionFailure(true).build()
+private val httpFast = http.newBuilder().callTimeout(7, TimeUnit.SECONDS).build()
+
+fun get(url: String, fast: Boolean = false): String {
+    val r = Request.Builder().url(url).header("User-Agent", "FrostWeather/3.2").build()
+    (if (fast) httpFast else http).newCall(r).execute().use {
+        if (!it.isSuccessful) error("HTTP ${it.code}")
+        return it.body!!.string()
+    }
 }
 
 fun fetchRaw(p: Place): String {
@@ -49,11 +53,11 @@ fun fetchRaw(p: Place): String {
         "&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,cloud_cover,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m,visibility,uv_index" +
         "&hourly=temperature_2m,precipitation_probability,weather_code,is_day" +
         "&daily=weather_code,temperature_2m_max,temperature_2m_min,sunrise,sunset,uv_index_max,precipitation_sum,precipitation_probability_max,wind_speed_10m_max" +
-        "&forecast_days=7&timezone=auto&wind_speed_unit=kmh")
+        "&forecast_days=15&timezone=auto&wind_speed_unit=kmh")
 }
 
 fun fetchAqi(p: Place): Int = try {
-    JSONObject(get("https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${p.lat}&longitude=${p.lon}&current=us_aqi"))
+    JSONObject(get("https://air-quality-api.open-meteo.com/v1/air-quality?latitude=${p.lat}&longitude=${p.lon}&current=us_aqi", true))
         .getJSONObject("current").getInt("us_aqi")
 } catch (e: Exception) { -1 }
 
@@ -122,31 +126,33 @@ suspend fun Context.readAll(): Triple<Place?, Wx?, List<Place>> {
     return Triple(place, wx, saved)
 }
 
-fun desc(c: Int, day: Int): Pair<String, String> {
+fun cond(c: Int, day: Int): String = when (c) {
+    0 -> if (day == 1) "Clear" else "Clear night"
+    1 -> "Mainly clear"; 2 -> "Partly cloudy"; 3 -> "Overcast"
+    45, 48 -> "Fog"; 51, 53, 55 -> "Drizzle"; 56, 57 -> "Freezing drizzle"
+    61, 63, 65 -> "Rain"; 66, 67 -> "Freezing rain"; 71, 73, 75, 77 -> "Snow"
+    80, 81, 82 -> "Rain showers"; 85, 86 -> "Snow showers"; 95 -> "Thunderstorm"; 96, 99 -> "Thunderstorm, hail"
+    else -> "Cloudy"
+}
+
+fun iconFor(c: Int, day: Int): Int {
     val d = day == 1
     return when (c) {
-        0 -> (if (d) "☀️" else "🌙") to (if (d) "Clear sky" else "Clear night")
-        1 -> (if (d) "🌤️" else "🌙") to "Mainly clear"
-        2 -> (if (d) "⛅" else "☁️") to "Partly cloudy"
-        3 -> "☁️" to "Overcast"
-        45, 48 -> "🌫️" to "Fog"
-        51, 53, 55 -> "🌦️" to "Drizzle"
-        56, 57 -> "🌧️" to "Freezing drizzle"
-        61, 63, 65 -> "🌧️" to "Rain"
-        66, 67 -> "🌧️" to "Freezing rain"
-        71, 73, 75, 77 -> "❄️" to "Snow"
-        80, 81, 82 -> "🌦️" to "Rain showers"
-        85, 86 -> "🌨️" to "Snow showers"
-        95 -> "⛈️" to "Thunderstorm"
-        96, 99 -> "⛈️" to "Thunderstorm, hail"
-        else -> "🌡️" to "Unknown"
+        0 -> if (d) R.drawable.ic_w_sun else R.drawable.ic_w_moon
+        1, 2 -> if (d) R.drawable.ic_w_partly_day else R.drawable.ic_w_partly_night
+        3 -> R.drawable.ic_w_cloud
+        45, 48 -> R.drawable.ic_w_fog
+        in 51..67, in 80..82 -> R.drawable.ic_w_rain
+        in 71..77, 85, 86 -> R.drawable.ic_w_snow
+        in 95..99 -> R.drawable.ic_w_storm
+        else -> R.drawable.ic_w_cloud
     }
 }
 
 fun compass16(deg: Float): String =
     arrayOf("N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW")[(((deg % 360f) / 22.5f) + .5f).toInt() % 16]
 
-fun uvLevel(u: Double) = when { u < 3 -> "Low"; u < 6 -> "Moderate"; u < 8 -> "High"; u < 11 -> "Very High"; else -> "Extreme" }
+fun uvLevel(u: Double) = when { u < 3 -> "Very weak"; u < 5 -> "Weak"; u < 7 -> "Moderate"; u < 10 -> "Strong"; else -> "Very strong" }
 fun humLabel(h: Int) = when { h < 30 -> "Dry"; h < 60 -> "Comfortable"; h < 80 -> "Humid"; else -> "Very Humid" }
 fun mins(t: String): Int { val s = t.takeLast(5); return s.take(2).toInt() * 60 + s.takeLast(2).toInt() }
 fun hour12(t: String): String { val h = t.substring(11, 13).toInt(); return "${if (h % 12 == 0) 12 else h % 12} ${if (h < 12) "AM" else "PM"}" }
@@ -154,3 +160,9 @@ fun dayName(date: String, i: Int) = when (i) {
     0 -> "Today"; 1 -> "Tomorrow"
     else -> LocalDate.parse(date).dayOfWeek.getDisplayName(TextStyle.SHORT, Locale.getDefault())
 }
+
+fun t12(s: String): String {
+    val x = s.takeLast(5); val h = x.take(2).toInt()
+    return "${if (h % 12 == 0) 12 else h % 12}:${x.takeLast(2)}${if (h < 12) "am" else "pm"}"
+}
+fun md(d: String) = "${d.substring(5, 7).toInt()}/${d.substring(8, 10).toInt()}"

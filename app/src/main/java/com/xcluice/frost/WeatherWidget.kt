@@ -46,7 +46,7 @@ class WeatherWidget : AppWidgetProvider() {
                 rv.setTextViewText(R.id.w_city, "Open Frost to set up")
                 return rv
             }
-            val (emo, txt) = desc(w.cur.code, w.cur.isDay)
+            val txt = cond(w.cur.code, w.cur.isDay)
             val d = w.days[0]
             val bg = when {
                 w.cur.isDay == 0 -> R.drawable.widget_bg_night
@@ -55,7 +55,7 @@ class WeatherWidget : AppWidgetProvider() {
             }
             rv.setInt(R.id.w_root, "setBackgroundResource", bg)
             rv.setTextViewText(R.id.w_city, w.place.name)
-            rv.setTextViewText(R.id.w_emoji, emo)
+            rv.setImageViewResource(R.id.w_icon, iconFor(w.cur.code, w.cur.isDay))
             rv.setTextViewText(R.id.w_temp, "${w.cur.temp.roundToInt()}°")
             rv.setTextViewText(R.id.w_cond, txt)
             rv.setTextViewText(R.id.w_hl, "↑${d.max.roundToInt()}°  ↓${d.min.roundToInt()}°  ·  Feels ${w.cur.feels.roundToInt()}°")
@@ -65,7 +65,7 @@ class WeatherWidget : AppWidgetProvider() {
             for (i in 0 until 4) {
                 val h = w.hours.getOrNull(i + 1) ?: continue
                 rv.setTextViewText(t[i], hour12(h.time))
-                rv.setTextViewText(e[i], desc(h.code, h.isDay).first)
+                rv.setImageViewResource(e[i], iconFor(h.code, h.isDay))
                 rv.setTextViewText(v[i], "${h.temp.roundToInt()}°")
             }
             return rv
