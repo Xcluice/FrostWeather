@@ -73,6 +73,10 @@ fun W(s: String, sz: Int = 14, w: FontWeight = FontWeight.Normal, a: Float = 1f,
 fun Icon(res: Int, size: Int = 22, tint: Color = Color.White) =
     androidx.compose.foundation.Image(painterResource(res), null, Modifier.size(size.dp), colorFilter = ColorFilter.tint(tint))
 
+@Composable
+fun WIcon(res: Int, size: Int = 22) =
+    androidx.compose.foundation.Image(painterResource(res), null, Modifier.size(size.dp))
+
 fun sky(code: Int, day: Int): List<Color> = if (day != 1) when {
     code >= 95 -> listOf(Color(0xFF0B0820), Color(0xFF2D1B69), Color(0xFF4B3F8F))
     code >= 51 -> listOf(Color(0xFF0B1220), Color(0xFF1B2A44), Color(0xFF2E4468))
@@ -172,7 +176,7 @@ fun Hourly(w: Wx) = Column(Modifier.fillMaxWidth().glass().padding(vertical = 16
         items(w.hours) { h ->
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 W(if (h === w.hours[0]) "Now" else t12(h.time).dropLast(2), 13, a = .8f)
-                Icon(iconFor(h.code, h.isDay), 26)
+                WIcon(iconFor(h.code, h.isDay), 28)
                 W("${h.temp.roundToInt()}°", 16, FontWeight.SemiBold)
             }
         }
@@ -186,10 +190,10 @@ fun Daily(w: Wx) {
     Column(Modifier.fillMaxWidth().glass().padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         shown.forEachIndexed { i, d ->
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.width(96.dp)) { W("${md(d.date)}  ${dayName(d.date, i)}", 15, FontWeight.Medium) }
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { Icon(iconFor(d.code, 1), 22) }
-                Box(Modifier.width(90.dp), contentAlignment = Alignment.CenterEnd) {
-                    W("${d.min.roundToInt()}° / ${d.max.roundToInt()}°", 15, FontWeight.SemiBold)
+                Box(Modifier.width(116.dp)) { W("${md(d.date)}  ${dayName(d.date, i)}", 18, FontWeight.SemiBold) }
+                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { WIcon(iconFor(d.code, 1), 24) }
+                Box(Modifier.width(94.dp), contentAlignment = Alignment.CenterEnd) {
+                    W("${d.min.roundToInt()}° / ${d.max.roundToInt()}°", 16, FontWeight.SemiBold)
                 }
             }
         }

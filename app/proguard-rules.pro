@@ -1,0 +1,3 @@
+-keep class com.xcluice.frost.** { *; }
+-dontwarn okhttp3.**
+-dontwarn okio.**
