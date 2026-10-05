@@ -184,16 +184,37 @@ fun Hourly(w: Wx) = Column(Modifier.fillMaxWidth().glass().padding(vertical = 16
 }
 
 @Composable
+fun DayHourly(hours: List<Hour>) = LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp), contentPadding = PaddingValues(top = 10.dp)) {
+    items(hours) { h ->
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            W(t12(h.time).dropLast(2), 12, a = .8f)
+            WIcon(iconFor(h.code, h.isDay), 22)
+            W("${h.temp.roundToInt()}°", 14, FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
 fun Daily(w: Wx) {
     var expanded by remember { mutableStateOf(false) }
+    var openDay by remember { mutableStateOf<String?>(null) }
     val shown = if (expanded) w.days else w.days.take(4)
-    Column(Modifier.fillMaxWidth().glass().padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    val rowBg = Color(0xFF2B2440)
+    Column(Modifier.fillMaxWidth().glass().padding(18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         shown.forEachIndexed { i, d ->
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Box(Modifier.width(116.dp)) { W("${md(d.date)}  ${dayName(d.date, i)}", 18, FontWeight.SemiBold) }
-                Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { WIcon(iconFor(d.code, 1), 24) }
-                Box(Modifier.width(94.dp), contentAlignment = Alignment.CenterEnd) {
-                    W("${d.min.roundToInt()}° / ${d.max.roundToInt()}°", 16, FontWeight.SemiBold)
+            val isOpen = openDay == d.date
+            Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(rowBg.copy(.4f))
+                .tap { openDay = if (isOpen) null else d.date }.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.width(112.dp)) { W("${md(d.date)}  ${dayName(d.date, i)}", 18, FontWeight.SemiBold) }
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.Center) { WIcon(iconFor(d.code, 1), 24) }
+                    Box(Modifier.width(94.dp), contentAlignment = Alignment.CenterEnd) {
+                        W("${d.min.roundToInt()}° / ${d.max.roundToInt()}°", 16, FontWeight.SemiBold)
+                    }
+                }
+                if (isOpen) {
+                    val hrs = w.byDay[d.date].orEmpty()
+                    if (hrs.isNotEmpty()) DayHourly(hrs) else W("No hourly data for this day", 12, a = .7f)
                 }
             }
         }

@@ -30,21 +30,30 @@ data class Cur(val temp: Double, val feels: Double, val hum: Int, val code: Int,
 data class Hour(val time: String, val temp: Double, val pop: Int, val code: Int, val isDay: Int)
 data class Day(val date: String, val max: Double, val min: Double, val code: Int, val rise: String, val set: String,
                val uv: Double, val prcp: Double, val pop: Int, val wind: Double)
-data class Wx(val place: Place, val cur: Cur, val hours: List<Hour>, val days: List<Day>, val aqi: Int, val now: String)
+data class Wx(val place: Place, val cur: Cur, val hours: List<Hour>, val days: List<Day>, val aqi: Int, val now: String, val byDay: Map<String, List<Hour>>)
 
 fun Place.json(): JSONObject = JSONObject().put("n", name).put("a", lat).put("o", lon).put("s", sub)
 fun JSONObject.place() = Place(getString("n"), getDouble("a"), getDouble("o"), optString("s"))
 
-private val http = OkHttpClient.Builder().connectTimeout(8, TimeUnit.SECONDS).readTimeout(15, TimeUnit.SECONDS)
-    .callTimeout(20, TimeUnit.SECONDS).retryOnConnectionFailure(true).build()
-private val httpFast = http.newBuilder().callTimeout(7, TimeUnit.SECONDS).build()
+private val http = OkHttpClient.Builder().connectTimeout(20, TimeUnit.SECONDS).readTimeout(40, TimeUnit.SECONDS)
+    .callTimeout(45, TimeUnit.SECONDS).retryOnConnectionFailure(true).build()
+private val httpFast = http.newBuilder().callTimeout(15, TimeUnit.SECONDS).build()
 
 fun get(url: String, fast: Boolean = false): String {
     val r = Request.Builder().url(url).header("User-Agent", "FrostWeather/3.2").build()
-    (if (fast) httpFast else http).newCall(r).execute().use {
-        if (!it.isSuccessful) error("HTTP ${it.code}")
-        return it.body!!.string()
+    var last: Exception? = null
+    repeat(3) { attempt ->
+        try {
+            (if (fast) httpFast else http).newCall(r).execute().use {
+                if (!it.isSuccessful) error("HTTP ${it.code}")
+                return it.body!!.string()
+            }
+        } catch (e: Exception) {
+            last = e
+            if (attempt < 2) Thread.sleep(1200L * (attempt + 1))
+        }
     }
+    throw last ?: RuntimeException("Network error")
 }
 
 fun fetchRaw(p: Place): String {
@@ -77,6 +86,10 @@ fun parse(p: Place, raw: String, aqiIn: Int): Wx {
         Hour(ht.getString(i), h.getJSONArray("temperature_2m").d(i), h.getJSONArray("precipitation_probability").d(i).roundToInt(),
             h.getJSONArray("weather_code").d(i).toInt(), h.getJSONArray("is_day").d(i).toInt())
     }
+    val byDay = (0 until ht.length()).map { i ->
+        Hour(ht.getString(i), h.getJSONArray("temperature_2m").d(i), h.getJSONArray("precipitation_probability").d(i).roundToInt(),
+            h.getJSONArray("weather_code").d(i).toInt(), h.getJSONArray("is_day").d(i).toInt())
+    }.groupBy { it.time.take(10) }
     val d = j.getJSONObject("daily")
     val dt = d.getJSONArray("time")
     val days = (0 until dt.length()).map { i ->
@@ -86,7 +99,7 @@ fun parse(p: Place, raw: String, aqiIn: Int): Wx {
             d.getJSONArray("precipitation_probability_max").d(i).roundToInt(), d.getJSONArray("wind_speed_10m_max").d(i))
     }
     val aqi = if (aqiIn >= 0) aqiIn else (25 + cur.hum * 0.35 + cur.cloud * 0.15).roundToInt()
-    return Wx(p, cur, hours, days, aqi, now)
+    return Wx(p, cur, hours, days, aqi, now, byDay)
 }
 
 fun search(q: String): List<Place> {
